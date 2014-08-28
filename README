@@ -1,0 +1,39 @@
+depmap
+======
+
+Scans C++ files for #includes and outputs a graph of dependencies.  Can
+resolve external dependencies if the search path is set and the correct filter
+is set.  
+
+Is hardcoded to search for *.cpp *.h *.tcc in the provided directory/directories
+or the current path if none were provided.
+
+If importing into yEd, first have yEd auto-size the nodes to fit their text,
+then have it auto-layout the graph (heirarchical).
+
+./depmap.sh  [-b <base>]  [-d <directory>]  [-s local|global|all]  [-f graphml|tgf|dot|txt]  [-I <search-path>]
+
+  - Scan cpp/h/tcc files in <directory> tree(s) for #includes
+  - Apply filter
+  - Transform paths to be relative to <base> (for files within <base>)
+  - Dump data as graph using given output format
+
+  * <directory> defaults to the current directory if none are specified
+  * <base> defaults to the first <directory> if not specified
+  * <format> defaults to 'txt' if not specified
+  * <scope> defaults to 'local' if not specified
+
+
+ Filters
+  - local is all "#include" with quoted filenames which are found
+  - global is "#include" and also <#include> which are found in search path
+  - all is all #include, even ones which cannot be found
+
+ Formats
+  - graphml is GraphML
+  - tgf is Trivial Graph Format
+  - dot is DOT format
+  - txt is plain format file=dep1,...depN
+
+ Requires recent versions of bash & realpath, awk, perl
+
