@@ -259,7 +259,7 @@ do
 		my $sourcenodename = "'"$NODENAME"'";
 		my $base = "'"$BASE"'";
 		my @search = split(":", "'"$(IFS=":" echo "${SEARCH[@]}")"'");
-		my $all = '"$([ "$3" == "all" ] && echo 1 || echo 0)"';
+		my $all = '"$([ "$SCOPE" == "all" ] && echo 1 || echo 0)"';
 		my $found;
 		if ($global) {
 			use List::Util '\''first'\'';
