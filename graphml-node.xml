@@ -1,0 +1,10 @@
+cat <<========================================
+		<node id="n_${FROM}">
+			<data key="d1">
+				<y:ShapeNode>
+					<y:NodeLabel>$NODE</y:NodeLabel>
+				</y:ShapeNode>
+			</data>
+		</node>
+========================================
+
