@@ -81,7 +81,7 @@ then
 	exit
 fi
 
-function plaintext_to_graphml {
+function graphml_generator {
 	declare GRAPHID=1
 	declare -a ALLTOKENS
 	declare -a PATHTOKENS
@@ -90,16 +90,7 @@ function plaintext_to_graphml {
 	declare NPREVTOKENS=0
 	declare IDX=0
 
-	cat \
-<<========================================
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<graphml
-xmlns="http://graphml.graphdrawing.org/xmlns"
-xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-xmlns:y="http://www.yworks.com/xml/graphml"
-xmlns:yed="http://www.yworks.com/xml/yed/3"
-xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/xml/schema/graphml/1.1/ygraphml.xsd">
-========================================
+	echo '<?xml version="1.0" encoding="UTF-8" standalone="no"?><graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:y="http://www.yworks.com/xml/graphml" xmlns:yed="http://www.yworks.com/xml/yed/3" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/xml/schema/graphml/1.1/ygraphml.xsd">'
 
 	"$GMLPRES" depmap-gml keys
 
@@ -141,7 +132,7 @@ xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/
 
 	done < <(for_each_node | sort -k1 -t'*')
 
-	for IDX in $(seq -s ' ' $((NPREVTOKENS-1)) -1 0)
+	for ((IDX = NPREVTOKENS - 1; IDX >= 0; IDX--))
 	do
 		echo "</graph></node>"
 	done
@@ -154,7 +145,7 @@ xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/
 	echo "</graph></graphml>"
 }
 
-function plaintext_to_tgf {
+function tgf_generator {
 	while read NODE
 	do
 		echo "${NODES["$NODE"]} $NODE"
@@ -168,7 +159,7 @@ function plaintext_to_tgf {
 	done < <(for_each_edge)
 }
 
-function plaintext_to_dot {
+function dot_generator {
 	echo "digraph {"
 	while read FROM NODE TO TARGET
 	do
@@ -177,7 +168,7 @@ function plaintext_to_dot {
 	echo "}"
 }
 
-function plaintext {
+function parser {
 	local ASSIGNMENT="$1" COMMA="$2"
 	awk '
 		BEGIN {
@@ -295,107 +286,161 @@ declare SCOPE
 declare -a SEARCH
 declare LEVELS
 declare GMLPRES
-while getopts :b:d:f:o:s:I:g:p:h@ OPT
-do
-	case "$OPT" in
-		\?) fail "Invalid option: -$OPTARG";;
-		:) fail "Option -$OPTARG requires a parameter";;
-		@) DEBUG=yes;;
-		h) help;;
-		b) [ -z "$BASE" ] && BASE="$OPTARG" || fail "Base path already specified";;
-		f) IFS=':' FILTERS+=("$OPTARG");;
-		o) [ -z "$FORMAT" ] && FORMAT="$OPTARG" || fail "Format already specified";;
-		s) [ -z "$SCOPE" ] && SCOPE="$OPTARG" || fail "Scope already specified";;
-		I) [ -d "$OPTARG" ] && SEARCH+="$OPTARG" || fail "Cannot find directory '$OPTARG'";;
-		g) [ -z "$LEVELS" ] && LEVELS="$OPTARG" || fail "Grouping levels already specified";;
-		p) [ -z "$GMLPRES" ] && GMLPRES="$OPTARG" || fail "Presentation script already specified";;
-		*) ;&
-		d) [ -e "$OPTARG" ] && DIRS+=("$OPTARG") || fail "Cannot find '$OPTARG'";;
-	esac
-done
+declare -a PREDICATES
+function configurator {
+	while getopts :b:d:f:o:s:I:g:p:h@ OPT
+	do
+		case "$OPT" in
+			\?) fail "Invalid option: -$OPTARG";;
+			:) fail "Option -$OPTARG requires a parameter";;
+			@) DEBUG=yes;;
+			h) help;;
+			b) [ -z "$BASE" ] && BASE="$OPTARG" || fail "Base path already specified";;
+			f) IFS=':' FILTERS+=("$OPTARG");;
+			o) [ -z "$FORMAT" ] && FORMAT="$OPTARG" || fail "Format already specified";;
+			s) [ -z "$SCOPE" ] && SCOPE="$OPTARG" || fail "Scope already specified";;
+			I) [ -d "$OPTARG" ] && SEARCH+="$OPTARG" || fail "Cannot find directory '$OPTARG'";;
+			g) [ -z "$LEVELS" ] && LEVELS="$OPTARG" || fail "Grouping levels already specified";;
+			p) [ -z "$GMLPRES" ] && GMLPRES="$OPTARG" || fail "Presentation script already specified";;
+			*) ;&
+			d) [ -e "$OPTARG" ] && DIRS+=("$OPTARG") || fail "Cannot find '$OPTARG'";;
+		esac
+	done
 
-if [ ${#DIRS[@]} -eq 0 ]
-then
-	DIRS=("$PWD")
-fi
-
-for IDX in "${!DIRS[@]}"
-do
-	DIRS[$IDX]="$(realpath "${DIRS[$IDX]}")"
-done
-
-if [ -z "$BASE" ]
-then
-	BASE="${DIRS[0]}"
-fi
-
-BASE="$(realpath "$BASE")"
-
-for IDX in "${!SEARCH[@]}"
-do
-	SEARCH[$IDX]="$(realpath "${SEARCH[$IDX]}")"
-done
-
-if [ ${#FILTERS[@]} -eq 0 ]
-then
-	FILTERS=( h hpp c cpp tcc )
-fi
-
-PT_DELIMS=( '*' '*' )
-
-case "$FORMAT" in
-tgf) OUT=plaintext_to_tgf;;
-dot) OUT=plaintext_to_dot;;
-graphml) OUT=plaintext_to_graphml;;
-null) OUT=true;;
-"") ;&
-txt) OUT= PT_DELIMS=( '=' ',' );;
-*) fail "Unknown output type: '$FORMAT'";;
-esac
-
-if [ "$FORMAT" != "graphml" ] && ([ "$GMLPRES" ] || [ "$LAYERS" ])
-then
-	fail "-p/-g only valid for graphml output format"
-elif [ -z "$GMLPRES" ]
-then
-	GMLPRES="$0"
-fi
-
-if [ "$FORMAT" == "graphml" ]
-then
-	GMLPRESTEST="$(dirname $(realpath "$0"))/presenters/${GMLPRES}.sh"
-	if [[ "$GMLPRES" =~ ^[a-z]+$ ]] && [ -e "$GMLPRESTEST" ]
+	if [ ${#DIRS[@]} -eq 0 ]
 	then
-		GMLPRES="$GMLPRESTEST"
-	else
-		GMLPRES="$(realpath "$GMLPRES")"
-		if [ ! -e "$GMLPRES" ]
+		DIRS=("$PWD")
+	fi
+
+	for IDX in "${!DIRS[@]}"
+	do
+		DIRS[$IDX]="$(realpath "${DIRS[$IDX]}")"
+	done
+
+	if [ -z "$BASE" ]
+	then
+		BASE="${DIRS[0]}"
+	fi
+
+	BASE="$(realpath "$BASE")"
+
+	for IDX in "${!SEARCH[@]}"
+	do
+		SEARCH[$IDX]="$(realpath "${SEARCH[$IDX]}")"
+	done
+
+	if [ ${#FILTERS[@]} -eq 0 ]
+	then
+		FILTERS=( h hpp c cpp tcc )
+	fi
+
+	PT_DELIMS=( '*' '*' )
+
+	case "$FORMAT" in
+	tgf) OUT=tgf_generator;;
+	dot) OUT=dot_generator;;
+	graphml) OUT=graphml_generator;;
+	null) OUT=true;;
+	"") ;&
+	txt) OUT= PT_DELIMS=( '=' ',' );;
+	*) fail "Unknown output type: '$FORMAT'";;
+	esac
+
+	if [ "$FORMAT" != "graphml" ] && ([ "$GMLPRES" ] || [ "$LAYERS" ])
+	then
+		fail "-p/-g only valid for graphml output format"
+	elif [ -z "$GMLPRES" ]
+	then
+		GMLPRES="$0"
+	fi
+
+	if [ "$FORMAT" == "graphml" ]
+	then
+		GMLPRESTEST="$(dirname $(realpath "$0"))/presenters/${GMLPRES}.sh"
+		if [[ "$GMLPRES" =~ ^[a-z]+$ ]] && [ -e "$GMLPRESTEST" ]
 		then
-			fail "Cannot find presenter '$GMLPRES'"
+			GMLPRES="$GMLPRESTEST"
+		else
+			GMLPRES="$(realpath "$GMLPRES")"
+			if [ ! -e "$GMLPRES" ]
+			then
+				fail "Cannot find presenter '$GMLPRES'"
+			fi
 		fi
 	fi
-fi
 
-case "$SCOPE" in
-"") ;&
-local) RX='#include \"([^\"]+)(\")';;
-global) RX='#include [\<\"]([^\>\"]+)([\>\"])';;
-all) RX='#include [\<\"]([^\>\"]+)([\>\"])';;
-*) fail "Unknown filter type: '$SCOPE'";;
-esac
+	case "$SCOPE" in
+	"") ;&
+	local) RX='#include \"([^\"]+)(\")';;
+	global) RX='#include [\<\"]([^\>\"]+)([\>\"])';;
+	all) RX='#include [\<\"]([^\>\"]+)([\>\"])';;
+	*) fail "Unknown filter type: '$SCOPE'";;
+	esac
 
-PREDICATES=()
-for FILTER in "${FILTERS[@]}"
-do
-	if [ ${#PREDICATES[@]} -ne 0 ]
+	PREDICATES=()
+	for FILTER in "${FILTERS[@]}"
+	do
+		if [ ${#PREDICATES[@]} -ne 0 ]
+		then
+			PREDICATES+=(-or)
+		fi
+		PREDICATES+=(-name "*.$FILTER")
+	done
+}
+
+function scanner {
+	find "${DIRS[@]}" "${PREDICATES[@]}"
+}
+
+function tokenizer {
+	while read FILE
+	do
+		FILEREL="$(realpath "$FILE" --relative-base="$BASE")"
+		FILEFULL="$(realpath "$FILE")"
+		NODENAME="${FILEREL%.*}"
+		echo "$NODENAME"
+		pushd "$(dirname "$FILE")" >/dev/null
+		perl < "$FILEFULL" -ne '
+			next unless /^'"$RX"'\s*$/;
+			my $include = $1;
+			my $global = $2 eq ">";
+			my $sourcenodename = "'"$NODENAME"'";
+			my $base = "'"$BASE"'";
+			my @search = split(":", "'"$(IFS=":" echo "${SEARCH[@]}")"'");
+			my $all = '"$([ "$SCOPE" == "all" ] && echo 1 || echo 0)"';
+			my $found;
+			if ($global) {
+				use List::Util '\''first'\'';
+				$loc = first { -e "$_/$include" } @search;
+				$found = !!$loc;
+			} else {
+				$found = -e "$include";
+				$loc = "./";
+			}
+			next unless $found || $all;
+			my $nodename = `realpath "$loc"/"$include" --relative-base="$base"` if $found;
+			$nodename =~ s/\.[^\.]*$// if $found;
+			$nodename = "<$nodename>" if $global && !all;
+			print "$sourcenodename\t$nodename\n";
+			next;'
+		popd >/dev/null
+	done | sort | uniq
+}
+
+function generator {
+	GENERATOR="$1"
+	if [ "$GENERATOR" ]
 	then
-		PREDICATES+=(-or)
+		buffer_lines
+		index_nodes
+		$GENERATOR
+	else
+		cat
+		echo ""
 	fi
-	PREDICATES+=(-name "*.$FILTER")
-done
+}
 
-if [ "$DEBUG" == "yes" ]
-then
+function dump_configuration {
 	function showvar {
 		echo -ne "$1\t"
 		shift
@@ -414,77 +459,16 @@ then
 		showvar "Output" "$OUT"
 		showvar "Predicates" "${PREDICATES[@]}"
 	} | column -t -s $'\t'
-fi >&2
+}
 
-while read FILE
-do
-	FILEREL="$(realpath "$FILE" --relative-base="$BASE")"
-	FILEFULL="$(realpath "$FILE")"
-	NODENAME="${FILEREL%.*}"
-	echo "$NODENAME"
-	pushd "$(dirname "$FILE")" >/dev/null
-	perl < "$FILEFULL" -ne '
-		next unless /^'"$RX"'\s*$/;
-		my $include = $1;
-		my $global = $2 eq ">";
-		my $sourcenodename = "'"$NODENAME"'";
-		my $base = "'"$BASE"'";
-		my @search = split(":", "'"$(IFS=":" echo "${SEARCH[@]}")"'");
-		my $all = '"$([ "$SCOPE" == "all" ] && echo 1 || echo 0)"';
-		my $found;
-		if ($global) {
-			use List::Util '\''first'\'';
-			$loc = first { -e "$_/$include" } @search;
-			$found = !!$loc;
-		} else {
-			$found = -e "$include";
-			$loc = "./";
-		}
-		next unless $found || $all;
-		my $nodename = `realpath "$loc"/"$include" --relative-base="$base"` if $found;
-		$nodename =~ s/\.[^\.]*$// if $found;
-		$nodename = "<$nodename>" if $global && !all;
-		print "$sourcenodename\t$nodename\n";
-		next;
-		' | \
-		sort | \
-		uniq
-	popd >/dev/null
-done < <(
-		if [ -z "$DEBUG" ] || [ ! -e "/tmp/depmap.pt" ]
-		then
-			find "${DIRS[@]}" "${PREDICATES[@]}"
-		fi
-	) | \
-	sort | \
-	uniq | \
-	plaintext "${PT_DELIMS[@]}" | \
-	{
-		if [ "$DEBUG" ]
-		then
-			if [ -e "/tmp/depmap.pt" ]
-			then
-				cat > /dev/null
-				echo >&2 "DEBUG: Re-using parsed data from last depmap command"
-				echo >&2 "Delete /tmp/depmap.pt or run without DEBUG flag to re-parse new options/files"
-				cat /tmp/depmap.pt
-			else
-				tee /tmp/depmap.pt
-			fi
-		else
-			cat
-		fi
-	} | \
-	{
-		if [ "$OUT" ]
-		then
-			buffer_lines
-			index_nodes
-			$OUT
-		else
-			cat
-			echo ""
-		fi
-	}
+configurator "$@"
+
+if [ "$DEBUG" == "yes" ]
+then
+	dump_configuration >&2
+	fail "DEBUG mode, configuration dump complete"
+fi
+
+scanner | tokenizer | parser "${PT_DELIMS[@]}" | generator "$OUT"
 
 exit 0
